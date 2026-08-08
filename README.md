@@ -3,7 +3,14 @@
 A polished, fully native **Sudoku game for iOS**, built from scratch in **SwiftUI** with a clean MVVM architecture. Includes a puzzle generator that guarantees unique solutions, an efficient backtracking solver, a logic-based hint system, and the quality-of-life features you'd expect from a shipping app — pencil marks, undo, lives, persistence, haptics, and stats.
 
 <p align="center">
-  <img src="Screenshots/menu.png" width="280" alt="Sudoku main menu" />
+  <img src="Screenshots/menu.png" width="200" alt="Main menu" />
+  <img src="Screenshots/difficulty.png" width="200" alt="Difficulty selection" />
+  <img src="Screenshots/gameplay.png" width="200" alt="Gameplay with same-number highlighting" />
+  <img src="Screenshots/paused.png" width="200" alt="Paused with blurred board" />
+</p>
+
+<p align="center">
+  <em>Menu &nbsp;·&nbsp; Difficulty picker &nbsp;·&nbsp; Gameplay (same-number highlighting) &nbsp;·&nbsp; Paused (board blurred)</em>
 </p>
 
 ## Features
