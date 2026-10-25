@@ -1,9 +1,15 @@
 import SwiftUI
 
 struct GameView: View {
-    @ObservedObject var vm: GameViewModel
+    let vm: GameViewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// An overlay covers the board, so VoiceOver should only reach the overlay.
+    private var isOverlayShown: Bool {
+        vm.isLoading || vm.gameState.status != .playing
+    }
 
     var body: some View {
         ZStack {
@@ -25,6 +31,7 @@ struct GameView: View {
                             Image(systemName: vm.gameState.status == .paused ? "play.circle" : "pause.circle")
                                 .font(.title2)
                         }
+                        .accessibilityLabel(vm.gameState.status == .paused ? "Resume" : "Pause")
                     }
                 }
                 .padding(.horizontal)
@@ -32,6 +39,17 @@ struct GameView: View {
                 BoardView(vm: vm)
                     .padding(.horizontal, 4)
                     .blur(radius: vm.gameState.status == .paused ? 18 : 0)
+                    .accessibilityLabel("Sudoku board")
+
+                if let message = vm.hintMessage {
+                    Label(message, systemImage: "lightbulb.fill")
+                        .font(.subheadline)
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .glassSurface(cornerRadius: 12, tint: .yellow.opacity(0.25))
+                        .padding(.horizontal)
+                        .transition(.opacity)
+                }
 
                 if vm.gameState.status == .playing || vm.gameState.status == .paused {
                     NumberPadView(vm: vm)
@@ -40,11 +58,13 @@ struct GameView: View {
                 Spacer()
             }
             .padding(.top)
+            .animation(.easeInOut(duration: 0.2), value: vm.hintMessage)
+            .accessibilityHidden(isOverlayShown)
             .navigationTitle("Sudoku")
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button {
                         vm.saveAndExit()
                         dismiss()
@@ -66,33 +86,21 @@ struct GameView: View {
                         .font(.largeTitle.bold())
                         .foregroundStyle(.white)
                     Button("Resume") { vm.togglePause() }
-                        .buttonStyle(.borderedProminent)
+                        .prominentButtonStyle()
                 }
             }
 
             // Win overlay
             if vm.gameState.status == .won {
-                Color.black.opacity(0.55)
+                Color.black.opacity(0.4)
                     .ignoresSafeArea()
-                VStack(spacing: 16) {
-                    Text("Puzzle Solved!")
-                        .font(.largeTitle.bold())
-                        .foregroundStyle(.white)
-                    Text(formatTime(vm.gameState.elapsedSeconds))
-                        .font(.system(.title2, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.85))
-                    if vm.isNewBestTime {
-                        Label("New best time!", systemImage: "trophy.fill")
-                            .font(.headline)
-                            .foregroundStyle(.yellow)
-                    }
-                    Text("Win streak: \(StatsStore.load().currentStreak)")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.7))
-                    Button("New Game") { dismiss() }
-                        .buttonStyle(.borderedProminent)
-                        .padding(.top, 4)
-                }
+                WinPopup(
+                    seconds: vm.gameState.elapsedSeconds,
+                    isNewBestTime: vm.isNewBestTime,
+                    streak: StatsStore.load().currentStreak,
+                    onNewGame: { dismiss() }
+                )
+                .transition(reduceMotion ? .opacity : .scale(scale: 0.9).combined(with: .opacity))
             }
 
             // Game over overlay
@@ -108,7 +116,7 @@ struct GameView: View {
                         .foregroundStyle(.white.opacity(0.8))
                         .multilineTextAlignment(.center)
                     Button("Try Again") { dismiss() }
-                        .buttonStyle(.borderedProminent)
+                        .prominentButtonStyle()
                         .tint(.red)
                 }
                 .padding(.horizontal, 32)
@@ -125,6 +133,8 @@ struct GameView: View {
                 }
             }
         }
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(duration: 0.35),
+                   value: vm.gameState.status == .won)
         .task {
             if vm.isResumed {
                 vm.startTimer()
@@ -132,16 +142,98 @@ struct GameView: View {
                 await vm.startGame()
             }
         }
-        .onChange(of: scenePhase) { newPhase in
-            if newPhase == .background {
-                vm.persist()
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase != .active { vm.pauseIfPlaying() }
+            if newPhase == .background { vm.persist() }
+        }
+        .onChange(of: vm.hintMessage) { _, message in
+            if let message {
+                AccessibilityNotification.Announcement(message).post()
             }
         }
     }
+}
 
-    private func formatTime(_ seconds: Int) -> String {
-        String(format: "%02d:%02d", seconds / 60, seconds % 60)
+/// A solid card (rather than text over a dimmed board) so the result and
+/// streak stay easy to read in both light and dark mode.
+private struct WinPopup: View {
+    let seconds: Int
+    let isNewBestTime: Bool
+    let streak: Int
+    let onNewGame: () -> Void
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 56))
+                .foregroundStyle(.green)
+                .accessibilityHidden(true)
+
+            Text("Puzzle Solved!")
+                .font(.title.bold())
+
+            HStack(spacing: 12) {
+                StatTile(title: "Time", value: formatClock(seconds), systemImage: "clock")
+                StatTile(title: "Win streak", value: "\(streak)", systemImage: "flame.fill")
+            }
+
+            if isNewBestTime {
+                Label("New best time!", systemImage: "trophy.fill")
+                    .font(.headline)
+                    .foregroundStyle(.orange)
+            }
+
+            Button(action: onNewGame) {
+                Text("New Game")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .prominentButtonStyle()
+        }
+        .padding(28)
+        .frame(maxWidth: 340)
+        .background(
+            RoundedRectangle(cornerRadius: 28)
+                .fill(Color.popupBackground)
+                .strokeBorder(Color(.separator), lineWidth: 0.5)
+                .shadow(color: .black.opacity(0.25), radius: 24, y: 8)
+        )
+        .padding(.horizontal, 24)
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isModal)
     }
+}
+
+private struct StatTile: View {
+    let title: String
+    let value: String
+    let systemImage: String
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Label(title, systemImage: systemImage)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(.title, design: .rounded).weight(.bold))
+                .monospacedDigit()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.popupTile))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private extension Color {
+    /// Pure black in dark mode would vanish against the dimmed board, so the
+    /// popup uses the raised greys iOS gives its own sheets.
+    static let popupBackground = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark ? .secondarySystemBackground : .systemBackground
+    })
+    static let popupTile = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark ? .tertiarySystemBackground : .secondarySystemBackground
+    })
 }
 
 private struct MistakeView: View {
@@ -157,5 +249,7 @@ private struct MistakeView: View {
                     .foregroundStyle(alive ? Color.red : Color(.tertiaryLabel))
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(livesRemaining) of \(GameState.maxMistakes) lives left")
     }
 }

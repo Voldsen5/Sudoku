@@ -1,23 +1,40 @@
 import SwiftUI
 
 struct BoardView: View {
-    @ObservedObject var vm: GameViewModel
+    let vm: GameViewModel
 
     var body: some View {
         GeometryReader { geo in
             let size = min(geo.size.width, geo.size.height)
             let cellSize = size / 9
+            let selRow = vm.gameState.selectedRow
+            let selCol = vm.gameState.selectedCol
+            let selectedValue = selRow.flatMap { r in selCol.flatMap { c in vm.board[r, c].value } }
 
             ZStack {
-                // Cell grid
+                // Cell grid. Highlights are derived from the selection here rather
+                // than stored on every cell, so a tap only redraws cells that change.
                 VStack(spacing: 0) {
                     ForEach(0..<9, id: \.self) { row in
                         HStack(spacing: 0) {
                             ForEach(0..<9, id: \.self) { col in
-                                CellView(cell: vm.board[row, col]) {
+                                let cell = vm.board[row, col]
+                                let isSelected = row == selRow && col == selCol
+                                let sharesUnit = selRow.map { sr in selCol.map { sc in
+                                    row == sr || col == sc || (row / 3 == sr / 3 && col / 3 == sc / 3)
+                                } ?? false } ?? false
+                                CellView(
+                                    cell: cell,
+                                    row: row,
+                                    col: col,
+                                    isSelected: isSelected,
+                                    isHighlighted: sharesUnit && !isSelected,
+                                    isSameValue: !isSelected && selectedValue != nil && cell.value == selectedValue,
+                                    size: cellSize
+                                ) {
                                     vm.selectCell(row: row, col: col)
                                 }
-                                .frame(width: cellSize, height: cellSize)
+                                .equatable()
                             }
                         }
                     }
@@ -29,6 +46,7 @@ struct BoardView: View {
                 }
                 .frame(width: size, height: size)
                 .allowsHitTesting(false)
+                .accessibilityHidden(true)
             }
             .frame(width: size, height: size)
             .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -24,6 +24,8 @@
 		AA000015 /* GamePersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA100015 /* GamePersistence.swift */; };
 		AA000016 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA100016 /* Assets.xcassets */; };
 		AA000017 /* Haptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA100017 /* Haptics.swift */; };
+		AA000030 /* LogicSolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA100030 /* LogicSolver.swift */; };
+		AA000031 /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA100031 /* Glass.swift */; };
 		AA000018 /* StatsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA100018 /* StatsStore.swift */; };
 		AA000020 /* SudokuTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA100020 /* SudokuTests.swift */; };
 /* End PBXBuildFile section */
@@ -56,6 +58,8 @@
 		AA100015 /* GamePersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamePersistence.swift; sourceTree = "<group>"; };
 		AA100016 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AA100017 /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
+		AA100030 /* LogicSolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogicSolver.swift; sourceTree = "<group>"; };
+		AA100031 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
 		AA100018 /* StatsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsStore.swift; sourceTree = "<group>"; };
 		AA100020 /* SudokuTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SudokuTests.swift; sourceTree = "<group>"; };
 		AAPROD001 /* Sudoku.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sudoku.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -103,6 +107,7 @@
 				AA100007 /* PuzzleGenerator.swift */,
 				AA100015 /* GamePersistence.swift */,
 				AA100017 /* Haptics.swift */,
+				AA100030 /* LogicSolver.swift */,
 				AA100018 /* StatsStore.swift */,
 			);
 			path = Services;
@@ -133,6 +138,7 @@
 				AA100012 /* CellView.swift */,
 				AA100013 /* NumberPadView.swift */,
 				AA100014 /* TimerView.swift */,
+				AA100031 /* Glass.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -240,6 +246,8 @@
 				AA000014 /* TimerView.swift in Sources */,
 				AA000015 /* GamePersistence.swift in Sources */,
 				AA000017 /* Haptics.swift in Sources */,
+				AA000030 /* LogicSolver.swift in Sources */,
+				AA000031 /* Glass.swift in Sources */,
 				AA000018 /* StatsStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -327,7 +335,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -385,7 +393,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -415,7 +423,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.sudoku.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -441,7 +449,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.sudoku.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
@@ -457,7 +465,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.sudoku.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Sudoku.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Sudoku";
 			};
@@ -474,7 +482,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.sudoku.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Sudoku.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Sudoku";
 			};

@@ -5,11 +5,22 @@ enum Difficulty: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var clueCount: Int {
+    /// The hardest solving technique a puzzle of this difficulty needs.
+    var targetLevel: LogicSolver.Level {
         switch self {
-        case .easy:   return 38
-        case .medium: return 30
-        case .hard:   return 24
+        case .easy:   return .singles
+        case .medium: return .intermediate
+        case .hard:   return .advanced
+        }
+    }
+
+    /// The generator stops removing clues at this count. Easy keeps plenty of
+    /// clues so it stays relaxed; medium and hard carve as far as uniqueness allows.
+    var minimumClues: Int {
+        switch self {
+        case .easy:   return 36
+        case .medium: return 24
+        case .hard:   return 17
         }
     }
 
@@ -24,11 +35,13 @@ enum Difficulty: String, CaseIterable, Identifiable {
     var displayName: String { rawValue.capitalized }
 
     var subtitle: String {
+        let technique: String
         switch self {
-        case .easy:   return "\(clueCount) clues · \(hintAllowance) hints"
-        case .medium: return "\(clueCount) clues · \(hintAllowance) hints"
-        case .hard:   return "\(clueCount) clues · \(hintAllowance) hint"
+        case .easy:   technique = "Singles only"
+        case .medium: technique = "Pairs & pointing"
+        case .hard:   technique = "Advanced logic"
         }
+        return "\(technique) · \(hintAllowance) \(hintAllowance == 1 ? "hint" : "hints")"
     }
 
     var badge: String {
@@ -36,14 +49,6 @@ enum Difficulty: String, CaseIterable, Identifiable {
         case .easy:   return "Relaxed"
         case .medium: return "Popular"
         case .hard:   return "Challenge"
-        }
-    }
-
-    var badgeColor: String {
-        switch self {
-        case .easy:   return "green"
-        case .medium: return "blue"
-        case .hard:   return "red"
         }
     }
 }

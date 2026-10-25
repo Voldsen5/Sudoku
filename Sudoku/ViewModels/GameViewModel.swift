@@ -1,15 +1,18 @@
 import Foundation
-import Combine
+import Observation
 
 @MainActor
-final class GameViewModel: ObservableObject {
-    @Published var board: Board
-    @Published var gameState: GameState
-    @Published var isLoading: Bool = false
-    @Published var isNewBestTime: Bool = false
-    private(set) var isResumed: Bool = false
+@Observable
+final class GameViewModel {
+    var board: Board
+    var gameState: GameState
+    var isLoading = false
+    var isNewBestTime = false
+    /// Why the last hint chose its cell. Cleared on the player's next action.
+    var hintMessage: String?
+    private(set) var isResumed = false
 
-    private var timerCancellable: AnyCancellable?
+    @ObservationIgnored private var timerTask: Task<Void, Never>?
     private var history: [Board] = []
 
     var canUndo: Bool { !history.isEmpty && gameState.status == .playing }
@@ -39,6 +42,7 @@ final class GameViewModel: ObservableObject {
         gameState.difficulty = difficulty
         gameState.hintsRemaining = difficulty.hintAllowance
         history.removeAll()
+        hintMessage = nil
         isLoading = false
         startTimer()
     }
@@ -65,7 +69,7 @@ final class GameViewModel: ObservableObject {
     func selectCell(row: Int, col: Int) {
         gameState.selectedRow = row
         gameState.selectedCol = col
-        updateHighlights()
+        hintMessage = nil
     }
 
     func enterValue(_ digit: Int) {
@@ -74,6 +78,7 @@ final class GameViewModel: ObservableObject {
               !board[row, col].isGiven,
               board[row, col].value != board.solution[row][col],
               gameState.status == .playing else { return }
+        hintMessage = nil
 
         if gameState.isPencilMode {
             snapshot()
@@ -97,12 +102,10 @@ final class GameViewModel: ObservableObject {
                 board[row, col].isWrong = false
                 clearWrongEntries()
                 eliminatePencilMark(digit, fromPeersOf: row, col: col)
-                updateHighlights()
                 Haptics.tap()
                 checkWin()
             } else {
                 board[row, col].isWrong = true
-                updateHighlights()
                 gameState.mistakeCount += 1
                 if gameState.mistakeCount >= GameState.maxMistakes {
                     gameState.status = .lost
@@ -123,10 +126,10 @@ final class GameViewModel: ObservableObject {
               gameState.status == .playing else { return }
         guard board[row, col].value != nil || !board[row, col].pencilMarks.isEmpty else { return }
         snapshot()
+        hintMessage = nil
         board[row, col].value = nil
         board[row, col].pencilMarks = []
         board[row, col].isWrong = false
-        updateHighlights()
         Haptics.tap()
     }
 
@@ -134,10 +137,43 @@ final class GameViewModel: ObservableObject {
         gameState.isPencilMode.toggle()
     }
 
+    /// How many more of `digit` the player still has to place correctly.
+    func remainingCount(of digit: Int) -> Int {
+        var placed = 0
+        for r in 0..<9 {
+            for c in 0..<9 where board[r, c].value == digit && !board[r, c].isWrong {
+                placed += 1
+            }
+        }
+        return 9 - placed
+    }
+
+    /// Reveals the next cell the player could logically deduce and explains why.
+    /// If the player's notes rule out a cell's real answer, points that out first:
+    /// those notes would otherwise lead them astray.
     func useHint() {
-        guard gameState.hintsRemaining > 0,
-              gameState.status == .playing,
-              let (row, col) = findHintCell() else { return }
+        guard gameState.hintsRemaining > 0, gameState.status == .playing else { return }
+
+        if let (row, col) = cellWithBrokenNotes() {
+            gameState.hintsRemaining -= 1
+            gameState.selectedRow = row
+            gameState.selectedCol = col
+            hintMessage = "Your notes here rule out the correct number. Take another look."
+            Haptics.tap()
+            return
+        }
+
+        let grid = confirmedGrid
+        let row: Int, col: Int, message: String
+        if let step = LogicSolver.nextDeduction(in: grid) {
+            (row, col) = (step.row, step.col)
+            message = explanation(for: step)
+        } else if let cell = mostConstrainedEmptyCell(in: grid) {
+            (row, col) = cell
+            message = "There's no single-step deduction right now, so here's a cell to get you moving."
+        } else {
+            return
+        }
 
         snapshot()
         let correct = board.solution[row][col]
@@ -152,7 +188,7 @@ final class GameViewModel: ObservableObject {
         // Move the selection to the revealed cell so the user can see it.
         gameState.selectedRow = row
         gameState.selectedCol = col
-        updateHighlights()
+        hintMessage = message
         Haptics.tap()
         checkWin()
     }
@@ -160,7 +196,7 @@ final class GameViewModel: ObservableObject {
     func undo() {
         guard gameState.status == .playing, let previous = history.popLast() else { return }
         board = previous
-        updateHighlights()
+        hintMessage = nil
         Haptics.tap()
     }
 
@@ -175,6 +211,12 @@ final class GameViewModel: ObservableObject {
         }
     }
 
+    /// Pauses when the app stops being active (Control Center, a call, the app
+    /// switcher) so the clock never runs while the player can't see the board.
+    func pauseIfPlaying() {
+        if gameState.status == .playing { gameState.status = .paused }
+    }
+
     // MARK: - Private
 
     /// Saves the current board so the move about to happen can be undone. Bounded
@@ -184,45 +226,50 @@ final class GameViewModel: ObservableObject {
         if history.count > 60 { history.removeFirst() }
     }
 
-    /// Picks the best cell for a hint: the next cell the player could logically
-    /// deduce. Prefers a "naked single" (an empty cell with exactly one possible
-    /// value); otherwise falls back to the most-constrained empty cell. Wrong
-    /// guesses are treated as empty so they don't corrupt the candidate logic.
-    private func findHintCell() -> (Int, Int)? {
-        func confirmedValue(_ r: Int, _ c: Int) -> Int? {
-            let cell = board[r, c]
-            if let v = cell.value, !cell.isWrong { return v }
-            return nil
-        }
+    /// The board as the player has correctly filled it (0 = empty). Wrong guesses
+    /// count as empty so they don't corrupt candidate logic.
+    private var confirmedGrid: [[Int]] {
+        board.cells.map { row in row.map { $0.isWrong ? 0 : ($0.value ?? 0) } }
+    }
 
-        func candidateCount(_ r: Int, _ c: Int) -> Int {
-            var used = Set<Int>()
-            let boxRow = (r / 3) * 3
-            let boxCol = (c / 3) * 3
-            for i in 0..<9 {
-                if let v = confirmedValue(r, i) { used.insert(v) }
-                if let v = confirmedValue(i, c) { used.insert(v) }
-            }
-            for rr in boxRow..<boxRow+3 {
-                for cc in boxCol..<boxCol+3 {
-                    if let v = confirmedValue(rr, cc) { used.insert(v) }
-                }
-            }
-            return 9 - used.count
-        }
-
-        var best: (row: Int, col: Int, count: Int)? = nil
+    private func cellWithBrokenNotes() -> (Int, Int)? {
         for r in 0..<9 {
-            for c in 0..<9 where confirmedValue(r, c) == nil {
-                let count = candidateCount(r, c)
-                if count == 1 { return (r, c) }          // naked single — ideal hint
-                if best == nil || count < best!.count {
-                    best = (r, c, count)
+            for c in 0..<9 {
+                let cell = board[r, c]
+                if cell.value == nil, !cell.pencilMarks.isEmpty,
+                   !cell.pencilMarks.contains(board.solution[r][c]) {
+                    return (r, c)
                 }
             }
         }
-        guard let best else { return nil }
-        return (best.row, best.col)
+        return nil
+    }
+
+    private func mostConstrainedEmptyCell(in grid: [[Int]]) -> (Int, Int)? {
+        let candidates = LogicSolver.candidates(in: grid)
+        var best: (row: Int, col: Int, count: Int)?
+        for r in 0..<9 {
+            for c in 0..<9 where grid[r][c] == 0 {
+                let count = candidates[r][c].nonzeroBitCount
+                if best == nil || count < best!.count { best = (r, c, count) }
+            }
+        }
+        return best.map { ($0.row, $0.col) }
+    }
+
+    private func explanation(for step: LogicSolver.Deduction) -> String {
+        switch step.reason {
+        case .nakedSingle:
+            return "Only \(step.digit) fits here. Every other number is already in this row, column or box."
+        case .hiddenSingle(let unit):
+            let place: String
+            switch unit {
+            case .row(let r):    place = "row \(r + 1)"
+            case .column(let c): place = "column \(c + 1)"
+            case .box:           place = "this box"
+            }
+            return "This is the only cell in \(place) where \(step.digit) can go."
+        }
     }
 
     /// Removes every cell still flagged as a wrong guess, emptying it back out.
@@ -263,37 +310,21 @@ final class GameViewModel: ObservableObject {
         }
     }
 
-    private func updateHighlights() {
-        guard let selRow = gameState.selectedRow,
-              let selCol = gameState.selectedCol else { return }
-        let boxRow = (selRow / 3) * 3
-        let boxCol = (selCol / 3) * 3
-        let selectedValue = board[selRow, selCol].value
-        for r in 0..<9 {
-            for c in 0..<9 {
-                let isSelected = r == selRow && c == selCol
-                board[r, c].isSelected = isSelected
-                board[r, c].isHighlighted = (r == selRow || c == selCol ||
-                    (r >= boxRow && r < boxRow+3 && c >= boxCol && c < boxCol+3))
-                    && !isSelected
-                board[r, c].isSameValue = !isSelected
-                    && selectedValue != nil
-                    && board[r, c].value == selectedValue
+    func startTimer() {
+        timerTask?.cancel()
+        timerTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, !Task.isCancelled else { return }
+                if self.gameState.status == .playing {
+                    self.gameState.elapsedSeconds += 1
+                }
             }
         }
     }
 
-    func startTimer() {
-        timerCancellable = Timer.publish(every: 1, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in
-                guard let self, self.gameState.status == .playing else { return }
-                self.gameState.elapsedSeconds += 1
-            }
-    }
-
     private func stopTimer() {
-        timerCancellable?.cancel()
-        timerCancellable = nil
+        timerTask?.cancel()
+        timerTask = nil
     }
 }
