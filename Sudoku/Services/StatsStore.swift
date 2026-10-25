@@ -17,10 +17,12 @@ struct GameStats: Codable {
 
 /// Persists best times, win counts, and streaks in UserDefaults.
 enum StatsStore {
+    /// Overridable so tests can use an isolated suite instead of the real store.
+    nonisolated(unsafe) static var defaults = UserDefaults.standard
     private static let key = "gameStats"
 
     static func load() -> GameStats {
-        guard let data = UserDefaults.standard.data(forKey: key),
+        guard let data = defaults.data(forKey: key),
               let stats = try? JSONDecoder().decode(GameStats.self, from: data) else {
             return GameStats()
         }
@@ -29,7 +31,7 @@ enum StatsStore {
 
     private static func save(_ stats: GameStats) {
         if let data = try? JSONEncoder().encode(stats) {
-            UserDefaults.standard.set(data, forKey: key)
+            defaults.set(data, forKey: key)
         }
     }
 

@@ -7,6 +7,8 @@ struct ContentView: View {
     @State private var showOverwriteAlert = false
     @State private var showDifficultyCards = false
     @State private var stats = StatsStore.load()
+    @ScaledMetric(relativeTo: .largeTitle) private var titleSize: CGFloat = 48
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         NavigationStack {
@@ -15,7 +17,7 @@ struct ContentView: View {
 
                 VStack(spacing: 8) {
                     Text("Sudoku")
-                        .font(.system(size: 48, weight: .bold, design: .rounded))
+                        .font(.system(size: titleSize, weight: .bold, design: .rounded))
                     Text("Fill the grid, one number at a time")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -24,8 +26,9 @@ struct ContentView: View {
                 VStack(spacing: 12) {
                     // Resume saved game
                     if let saved = savedGame {
+                        let difficulty = Difficulty(rawValue: saved.difficulty) ?? .medium
                         Button {
-                            let resumeVM = GameViewModel(difficulty: Difficulty(rawValue: saved.difficulty) ?? .medium)
+                            let resumeVM = GameViewModel(difficulty: difficulty)
                             resumeVM.resumeGame(from: saved)
                             vm = resumeVM
                             showGame = true
@@ -34,22 +37,18 @@ struct ContentView: View {
                                 Text("Resume Game")
                                     .font(.title3.bold())
                                 HStack(spacing: 12) {
-                                    Text((Difficulty(rawValue: saved.difficulty) ?? .medium).displayName)
-                                        .font(.caption)
-                                        .foregroundStyle(.white.opacity(0.8))
-                                    Text(formatTime(saved.elapsedSeconds))
-                                        .font(.system(.caption, design: .monospaced))
-                                        .foregroundStyle(.white.opacity(0.8))
+                                    Text(difficulty.displayName)
+                                    Text(formatClock(saved.elapsedSeconds))
+                                        .monospaced()
                                 }
+                                .font(.caption)
+                                .opacity(0.85)
                             }
-                            .frame(width: 240, height: 60)
-                            .background(
-                                RoundedRectangle(cornerRadius: 14)
-                                    .fill(Color.green)
-                                    .shadow(color: Color.green.opacity(0.45), radius: 6, x: 0, y: 4)
-                            )
-                            .foregroundStyle(.white)
+                            .frame(minWidth: 220, minHeight: 52)
                         }
+                        .prominentButtonStyle()
+                        .tint(.green)
+                        .accessibilityLabel("Resume \(difficulty.displayName) game")
                     }
 
                     if !showDifficultyCards {
@@ -57,62 +56,62 @@ struct ContentView: View {
                             if savedGame != nil {
                                 showOverwriteAlert = true
                             } else {
-                                withAnimation(.spring(duration: 0.35)) {
+                                withAnimation(pickerAnimation) {
                                     showDifficultyCards = true
                                 }
                             }
                         } label: {
                             Text("New Game")
                                 .font(.title3.bold())
-                                .frame(width: 240, height: 52)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 14)
-                                        .fill(Color.accentColor)
-                                        .shadow(color: Color.accentColor.opacity(0.45), radius: 6, x: 0, y: 4)
-                                )
-                                .foregroundStyle(.white)
+                                .frame(minWidth: 220, minHeight: 44)
                         }
+                        .prominentButtonStyle()
                         .alert("Abandon current game?", isPresented: $showOverwriteAlert) {
                             Button("Abandon & Start New", role: .destructive) {
-                                GamePersistence.clear()
+                                GamePersistence.abandon()
                                 savedGame = nil
-                                withAnimation(.spring(duration: 0.35)) {
+                                stats = StatsStore.load()
+                                withAnimation(pickerAnimation) {
                                     showDifficultyCards = true
                                 }
                             }
                             Button("Cancel", role: .cancel) {}
                         } message: {
-                            Text("You have an unfinished game. Starting a new game will permanently discard it.")
+                            Text(stats.currentStreak > 0
+                                 ? "Your unfinished game will be discarded and counted as a loss, ending your \(stats.currentStreak)-game win streak."
+                                 : "Your unfinished game will be discarded and counted as a loss.")
                         }
                     }
                 }
 
                 // Difficulty cards
                 if showDifficultyCards {
-                    VStack(spacing: 10) {
-                        Text("Choose difficulty")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-
-                        ForEach(Difficulty.allCases) { difficulty in
-                            DifficultyCard(difficulty: difficulty) {
-                                startNewGame(difficulty: difficulty)
-                            }
-                        }
-
-                        Button {
-                            withAnimation(.spring(duration: 0.35)) {
-                                showDifficultyCards = false
-                            }
-                        } label: {
-                            Text("Cancel")
+                    GlassGroup(spacing: 10) {
+                        VStack(spacing: 10) {
+                            Text("Choose difficulty")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
+
+                            ForEach(Difficulty.allCases) { difficulty in
+                                DifficultyCard(difficulty: difficulty) {
+                                    startNewGame(difficulty: difficulty)
+                                }
+                            }
+
+                            Button {
+                                withAnimation(pickerAnimation) {
+                                    showDifficultyCards = false
+                                }
+                            } label: {
+                                Text("Cancel")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.top, 4)
                         }
-                        .padding(.top, 4)
                     }
                     .padding(.horizontal, 32)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                 }
 
                 Spacer()
@@ -128,6 +127,8 @@ struct ContentView: View {
                     .padding(.bottom, 12)
                 }
             }
+            .frame(maxWidth: .infinity)
+            .background(backdrop)
             .onAppear {
                 savedGame = GamePersistence.load()
                 stats = StatsStore.load()
@@ -144,6 +145,20 @@ struct ContentView: View {
         }
     }
 
+    private var pickerAnimation: Animation {
+        reduceMotion ? .easeInOut(duration: 0.2) : .spring(duration: 0.35)
+    }
+
+    /// A soft colour wash gives the glass buttons and cards something to refract.
+    private var backdrop: some View {
+        LinearGradient(
+            colors: [Color.accentColor.opacity(0.18), Color(.systemBackground), Color.green.opacity(0.12)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .ignoresSafeArea()
+    }
+
     private func startNewGame(difficulty: Difficulty) {
         let newVM = GameViewModel(difficulty: difficulty)
         vm = newVM
@@ -151,10 +166,6 @@ struct ContentView: View {
         // behind the game when the user navigates back.
         showDifficultyCards = false
         showGame = true
-    }
-
-    private func formatTime(_ seconds: Int) -> String {
-        String(format: "%02d:%02d", seconds / 60, seconds % 60)
     }
 }
 
@@ -167,15 +178,16 @@ private struct DifficultyCard: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(difficulty.displayName)
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.headline)
                         .foregroundStyle(Color(.label))
                     Text(difficulty.subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if let best = StatsStore.bestSeconds(for: difficulty) {
-                        Label(formatTime(best), systemImage: "trophy")
+                        Label(formatClock(best), systemImage: "trophy")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
+                            .accessibilityLabel("Best time \(formatClock(best))")
                     }
                 }
                 Spacer()
@@ -183,37 +195,21 @@ private struct DifficultyCard: View {
                     .font(.caption.weight(.medium))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
-                    .background(badgeBackground)
-                    .foregroundStyle(badgeForeground)
+                    .background(badgeColor.opacity(0.15))
+                    .foregroundStyle(badgeColor)
                     .clipShape(Capsule())
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
-            .background(
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(Color(.secondarySystemBackground))
-                    .shadow(color: Color.black.opacity(0.07), radius: 4, x: 0, y: 2)
-            )
+            .glassSurface(cornerRadius: 14, interactive: true)
         }
     }
 
-    private var badgeBackground: Color {
-        switch difficulty.badgeColor {
-        case "green": return Color.green.opacity(0.15)
-        case "red":   return Color.red.opacity(0.15)
-        default:      return Color.accentColor.opacity(0.15)
+    private var badgeColor: Color {
+        switch difficulty {
+        case .easy:   return .green
+        case .medium: return .accentColor
+        case .hard:   return .red
         }
-    }
-
-    private var badgeForeground: Color {
-        switch difficulty.badgeColor {
-        case "green": return Color.green
-        case "red":   return Color.red
-        default:      return Color.accentColor
-        }
-    }
-
-    private func formatTime(_ seconds: Int) -> String {
-        String(format: "%02d:%02d", seconds / 60, seconds % 60)
     }
 }

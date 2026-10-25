@@ -18,6 +18,8 @@ struct SavedGame: Codable {
 }
 
 enum GamePersistence {
+    /// Overridable so tests can use an isolated suite instead of the real store.
+    nonisolated(unsafe) static var defaults = UserDefaults.standard
     private static let key = "savedGame"
 
     static func save(board: Board, state: GameState) {
@@ -40,18 +42,25 @@ enum GamePersistence {
             savedAt: Date()
         )
         if let data = try? JSONEncoder().encode(saved) {
-            UserDefaults.standard.set(data, forKey: key)
+            defaults.set(data, forKey: key)
         }
     }
 
     static func load() -> SavedGame? {
-        guard let data = UserDefaults.standard.data(forKey: key),
+        guard let data = defaults.data(forKey: key),
               let saved = try? JSONDecoder().decode(SavedGame.self, from: data) else { return nil }
         return saved
     }
 
     static func clear() {
-        UserDefaults.standard.removeObject(forKey: key)
+        defaults.removeObject(forKey: key)
+    }
+
+    /// Discards the saved game and counts it as a loss, so a win streak can't be
+    /// protected by abandoning a run before the third mistake.
+    static func abandon() {
+        clear()
+        StatsStore.recordLoss()
     }
 
     static func restore(from saved: SavedGame) -> (Board, GameState)? {
